@@ -7,17 +7,9 @@ import websockets
 import ssl
 import asyncio
 import json
-
-try:
-    from .resources import reqs, processing
-    from .resources.control import *
-    from .resources.variables import log
-
-except ImportError:
-    from resources import reqs, processing
-    from resources.control import *
-    from resources.variables import log
-
+from resources import reqs, processing, variables
+from resources.control import *
+from resources.variables import log
 
 def run(function):
     """Runs the user function in an event loop, and catches keyboard interrupt."""
@@ -137,22 +129,16 @@ async def send(streamID, data, user_header: dict = None):
     data should be either str or bytes.
     """
     stream = variables.streams[streamID] # for convenience
-    data_len = len(data)
-
-    user_header_bytes = (json.dumps(user_header).encode(
-        'utf-8') if len(user_header) > 0 else bytes())
-
-    user_header_len = len(user_header_bytes)
-    pkt = memoryview(user_header_len.to_bytes(2, 'little')
-                     + data_len.to_bytes(2, 'little')
-                     + streamID.to_bytes(4, 'little')
-                     + user_header_bytes
-                     + data if data_len > 0 else bytes())
-
-    message = pkt
-
+    user_h = json.dumps(user_header) if user_header else ""
+    header = [0, 0, 0, 0, 0, 0, 0, 0]
+    header = bytearray(header)
+    head = memoryview(header)
+    head[0:2] = int.to_bytes(len(user_h), 2, 'little')
+    head[2:4] = int.to_bytes(len(data), 2, 'little')
+    head[4:6] = int.to_bytes(int(streamID), 2, 'little')
+    log(header)
+    message = bytes(header) + user_h.encode() + data.encode()
     log(message)
-
     if stream['protocol'] == 'ws':
         asyncio.create_task(stream['connection'].send(message))
         log("[ws] data sent")
@@ -192,3 +178,5 @@ async def _exit():
     await variables.connection.close()  # closes websockets control stream
     variables.is_open = False
     print("Closed.")
+
+run(connect("Testuser","Testpassword","corelink.hpc.nyu.edu","20012"))
